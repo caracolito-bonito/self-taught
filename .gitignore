@@ -1,0 +1,39 @@
+# OS junk
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime state
+.memory/
+*.log
+# Rust
+target/
+*.rs.bk
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local Kafka/Docker state, if created
+.kafka-data/
+docker-data/
+
+# Keep a shareable environment template
+!.env.example
+
+# harness
+.pi/
+
+# logs
+/.session-logs/
