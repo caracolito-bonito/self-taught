@@ -1,19 +1,24 @@
+use std::fs::create_dir_all;
+
 use anyhow::Result;
 use rusqlite::Connection;
 use rusqlite::params;
 
 fn main() -> Result<()> {
-    let mut db = Connection::open_in_memory()?;
+    create_dir_all(".kafka-data/")?;
+
+    let mut db = Connection::open(".kafka-data/projection.sqlite")?;
+
     db.execute_batch(
         "
         BEGIN;
-        CREATE TABLE processed_records (
+        CREATE TABLE IF NOT EXISTS processed_records (
             topic TEXT NOT NULL,
             partition_id INTEGER NOT NULL,
             record_offset INTEGER NOT NULL,
             PRIMARY KEY (topic, partition_id, record_offset)
         );
-        CREATE TABLE projection_state (
+        CREATE TABLE IF NOT EXISTS projection_state (
             id INTEGER PRIMARY KEY,
             processed_count INTEGER NOT NULL
         );
@@ -22,11 +27,11 @@ fn main() -> Result<()> {
     )?;
 
     db.execute(
-        "INSERT INTO projection_state (id, processed_count) VALUES (?1, ?2);",
+        "INSERT INTO projection_state (id, processed_count) VALUES (?1, ?2) ON CONFLICT(id) DO NOTHING;",
         [1, 0],
     )?;
 
-    for _ in 0..2 {
+    for attempt in 1..=3 {
         let tx = db.transaction()?;
 
         let inserted_rows_number = tx.execute(
@@ -36,11 +41,19 @@ fn main() -> Result<()> {
 
         println!("Inserted rows: {inserted_rows_number}");
 
-        if inserted_rows_number == 1 {
-            tx.execute(
-                "UPDATE projection_state SET processed_count = processed_count + 1 WHERE id = ?1; ",
-                [1],
-            )?;
+        match attempt {
+            1 => {
+                tx.rollback()?;
+                continue;
+            }
+            _ => {
+                if inserted_rows_number == 1 {
+                    tx.execute(
+                        "UPDATE projection_state SET processed_count = processed_count + 1 WHERE id = ?1; ",
+                        [1],
+                    )?;
+                }
+            }
         }
 
         tx.commit()?;
