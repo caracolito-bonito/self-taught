@@ -20,12 +20,12 @@ async fn main() -> Result<()> {
 
     let first = FutureRecord::to(topic)
         .key("transaction-demo")
-        .payload("first-aborted-record");
+        .payload("first-commited-record");
     let mut deliveries = Vec::new();
 
     let second = FutureRecord::to(topic)
         .key("transaction-demo")
-        .payload("second-aborted-record");
+        .payload("second-commited-record");
 
     let first_delivery = producer.send(first, Duration::from_secs(5)).await;
 
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    producer.abort_transaction(Duration::from_secs(30))?;
-    println!("Transaction ABORTED");
+    producer.commit_transaction(Duration::from_secs(30))?;
+    println!("Transaction COMMITED");
     Ok(())
 }
