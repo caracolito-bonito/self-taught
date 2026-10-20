@@ -41,7 +41,20 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             received_message = consumer.recv(), if received_count < 6 && recieved_offsets.len() < window_len  => {
-                todo!()
+                let message = received_message?;
+                if received_count == 0 {
+                    checkpoint = message.offset();
+                }
+                recieved_offsets.push_back(message.offset());
+                println!("Recieved P{}/O{}. Current queue len is: {}", message.partition(), message.offset(), recieved_offsets.len());
+                let message = message.detach();
+                let delay = *delays.get(received_count).unwrap();
+                task_set.spawn(async move {
+                    sleep(Duration::from_millis(delay)).await;
+                    message
+                });
+                received_count += 1;
+
             }
             Some(task) = task_set.join_next(), if !task_set.is_empty() => {
                 todo!()
