@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rdkafka::{
     ClientConfig, Message, TopicPartitionList,
     consumer::{CommitMode, Consumer, StreamConsumer},
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
                 recieved_offsets.push_back(message.offset());
                 println!("Recieved P{}/O{}. Current queue len is: {}", message.partition(), message.offset(), recieved_offsets.len());
                 let message = message.detach();
-                let delay = *delays.get(received_count).unwrap();
+                let delay = *delays.get(received_count).context("No more delays in delays, it shouldn't be like that")?;
                 task_set.spawn(async move {
                     sleep(Duration::from_millis(delay)).await;
                     message
@@ -57,7 +57,33 @@ async fn main() -> Result<()> {
 
             }
             Some(task) = task_set.join_next(), if !task_set.is_empty() => {
-                todo!()
+                let message = task?;
+                done_offsets.insert(message.offset());
+                let previous_checkpoint = checkpoint;
+
+                while let Some(first) = recieved_offsets.front().copied() {
+                    if !done_offsets.contains(&first) {
+                        break;
+                    }
+                    recieved_offsets.pop_front();
+                    done_offsets.remove(&first);
+                    checkpoint = first + 1;
+                };
+
+
+                println!("Done offset: {}, checkopoint is on: {}, current queue len is: {}", message.offset(), checkpoint, recieved_offsets.len());
+
+                if checkpoint != previous_checkpoint {
+                    let mut topic_partition_list = TopicPartitionList::new();
+
+                    topic_partition_list.add_partition_offset(topic, 0, rdkafka::Offset::Offset(checkpoint))?;
+
+                    consumer.commit(&topic_partition_list, CommitMode::Sync)?;
+
+                    println!("Saved checkpoint is: {}", checkpoint);
+
+                }
+
             }
         }
     }
