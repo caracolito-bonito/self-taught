@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use rdkafka::Message;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{Consumer, ConsumerContext, StreamConsumer};
+use rdkafka::{ClientContext, Message};
 use std::borrow::Cow;
 
 struct DisplayKafkaMessage<'a> {
@@ -11,16 +11,38 @@ struct DisplayKafkaMessage<'a> {
     offset: i64,
 }
 
+struct RebalanceLogger;
+
+impl ClientContext for RebalanceLogger {}
+
+impl ConsumerContext for RebalanceLogger {
+    fn pre_rebalance(
+        &self,
+        _base_consumer: &rdkafka::consumer::BaseConsumer<Self>,
+        rebalance: &rdkafka::consumer::Rebalance<'_>,
+    ) {
+        println!("PRE: {:?}", rebalance);
+    }
+
+    fn post_rebalance(
+        &self,
+        _base_consumer: &rdkafka::consumer::BaseConsumer<Self>,
+        rebalance: &rdkafka::consumer::Rebalance<'_>,
+    ) {
+        println!("POST: {:?}", rebalance);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let topic = "rebalance-input";
-    let consumer: StreamConsumer = ClientConfig::new()
+    let consumer: StreamConsumer<RebalanceLogger> = ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
         .set("group.id", "rebalance-watch-v1")
         .set("auto.offset.reset", "earliest")
         .set("enable.auto.offset.store", "false")
         .set("enable.auto.commit", "false")
-        .create()?;
+        .create_with_context(RebalanceLogger)?;
     consumer.subscribe(&[topic])?;
 
     loop {
